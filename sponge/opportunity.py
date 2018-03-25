@@ -1,6 +1,5 @@
 from typing import Union
 import logging
-from ccxt import Exchange
 from .ohlc import OHLCPoint
 from .symbol_pair import SymbolPair
 
@@ -42,16 +41,6 @@ class Opportunity(object):
         self.symbol_pair = symbol_pair
         self.interval = interval
 
-    def fetch_ohlc(self, client: Exchange) -> OHLCPoint:
-        symbol = self.symbol_pair.get_pair_name(client.describe()['id'])
-        return OHLCPoint(client.fetch_ohlcv(symbol=symbol, limit=1)[0])
-
-    def fetch_low_price_ohlc(self, client):
-        return self.fetch_ohlc(client)
-
-    def fetch_high_price_ohlc(self, client):
-        return self.fetch_ohlc(client)
-
     def chance(self, high_data: OHLCPoint, low_data: OHLCPoint) -> Union[Chance, None]:
         price_spread = high_data.close - low_data.close
         spread_rate = price_spread / low_data.close
@@ -76,5 +65,5 @@ class Opportunity(object):
             sell_price = high_data.close
             sell_amount = volume
             chance = Chance(buy_price=buy_price, buy_amount=buy_amount, sell_price=sell_price, sell_amount=sell_amount)
-            log.info("PROFIT {}, detail: {}".format((chance.sell_amount - chance.buy_amount) * volume, chance))
+            log.info("PROFIT {}, detail: {}".format((chance.sell_price - chance.buy_price) * volume, chance))
             return chance
