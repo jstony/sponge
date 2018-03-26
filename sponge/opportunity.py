@@ -1,7 +1,8 @@
 from typing import Union
 import logging
-from .ohlc import OHLCPoint
+from .orderbook import OrderBook
 from .symbol_pair import SymbolPair
+from .exchange import Exchange
 
 log = logging.getLogger(__name__)
 
@@ -24,10 +25,11 @@ class Opportunity(object):
     """
 
     def __init__(self,
-                 low_price_exchange: str,
-                 high_price_exchange: str,
+                 low_price_exchange: Exchange,
+                 high_price_exchange: Exchange,
                  estimated_fee: float,
                  target_spread: float,
+                 least_amount: float,
                  symbol_pair: SymbolPair,
                  interval: int):
         self.low_price_exchange = low_price_exchange
@@ -38,32 +40,33 @@ class Opportunity(object):
         if not 1 > target_spread > 0:
             raise ValueError("target_spread should be hundred percent value")
         self.target_spread = target_spread
+        self.least_amount = least_amount
         self.symbol_pair = symbol_pair
         self.interval = interval
 
-    def chance(self, high_data: OHLCPoint, low_data: OHLCPoint) -> Union[Chance, None]:
-        price_spread = high_data.close - low_data.close
-        spread_rate = price_spread / low_data.close
+    def chance(self, high_orderbook: OrderBook, low_orderbook: OrderBook) -> Union[Chance, None]:
+        target_volume = self.least_amount * 2
+        bid = high_orderbook.best_bid_by_volume(target_volume)
+        ask = low_orderbook.best_ask_by_volume(target_volume)
+        price_spread = bid - ask
+        spread_rate = price_spread / min(bid, ask)
         profit_rate = spread_rate - self.estimated_fee
         log.info(
             "{symbol}: {low_exchange}(buy) {low_price} {high_exchange}(sell) {high_price} spread {spread:.2f}, rate {spread_rate:.2f}% fee {fee:.2f}% target_spread {target_spread:.2f}% -> profit:{profit_rate:.2f}% {action}".format(
                 symbol=self.symbol_pair.get_pair_name(),
                 low_exchange=self.low_price_exchange,
                 high_exchange=self.high_price_exchange,
-                low_price=low_data.close,
-                high_price=high_data.close,
+                low_price=ask,
+                high_price=bid,
                 spread_rate=spread_rate * 100,
                 fee=self.estimated_fee * 100,
                 target_spread=self.target_spread * 100,
                 profit_rate=profit_rate * 100,
-                spread=high_data.close - low_data.close,
+                spread=price_spread,
                 action='DO' if profit_rate > self.target_spread else 'SKIP'))
         if profit_rate > self.target_spread:
-            volume = min(low_data.volume, high_data.volume)
-            buy_price = low_data.close
-            buy_amount = volume
-            sell_price = high_data.close
-            sell_amount = volume
-            chance = Chance(buy_price=buy_price, buy_amount=buy_amount, sell_price=sell_price, sell_amount=sell_amount)
-            log.info("PROFIT {}, detail: {}".format((chance.sell_price - chance.buy_price) * volume, chance))
+            buy_amount = self.least_amount
+            sell_amount = self.least_amount
+            chance = Chance(buy_price=ask, buy_amount=buy_amount, sell_price=bid, sell_amount=sell_amount)
+            log.info("PROFIT {}, detail: {}".format(price_spread * self.least_amount, chance))
             return chance

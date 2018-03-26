@@ -3,8 +3,9 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, Executor
 import ccxt
-from .opportunity import Opportunity
+from .opportunity import Opportunity, Exchange
 from .ohlc import OHLCPoint
+from .orderbook import OrderBook
 
 log = logging.getLogger(__name__)
 
@@ -27,21 +28,27 @@ class Scanner(object):
                     log.error("error: {}, retry...".format(e))
 
     def scan_exchanges(self):
-        fs = [self.executor.submit(self.watch, o) for o in self.opportunities]
-        for f in fs:
-            f.result()
+        for o in self.opportunities:
+            self.watch(o)
 
-    def watch(self, opportunity: Opportunity):
-        h_client: ccxt.Exchange = getattr(ccxt, opportunity.high_price_exchange)()
-        l_client: ccxt.Exchange = getattr(ccxt, opportunity.low_price_exchange)()
-        h_data_future = self.executor.submit(self.fetch_ohlc, h_client, opportunity)
-        l_data_future = self.executor.submit(self.fetch_ohlc, l_client, opportunity)
-        chance = opportunity.chance(high_data=h_data_future.result(), low_data=l_data_future.result())
-        if chance:
-            pass  # buy
-        time.sleep(opportunity.interval)
+    def watch(self, o: Opportunity):
+        h_order_book_future = self.executor.submit(self.fetch_order_book, o.high_price_exchange, o)
+        l_order_book_future = self.executor.submit(self.fetch_order_book, o.low_price_exchange, o)
+        h_order_book: OrderBook = h_order_book_future.result()
+        l_order_book: OrderBook = l_order_book_future.result()
+        chance = o.chance(high_orderbook=h_order_book, low_orderbook=l_order_book)
+        if not chance:
+            pass
+        time.sleep(o.interval)
 
-    def fetch_ohlc(self, client: ccxt.Exchange, opportunity: Opportunity) -> OHLCPoint:
-        symbol = opportunity.symbol_pair.get_pair_name(client.describe()['id'])
+    def fetch_ohlc(self, exchange: Exchange, opportunity: Opportunity) -> OHLCPoint:
+        client = exchange.new_client()
+        symbol = opportunity.symbol_pair.get_pair_name(exchange.name)
         raw_data = client.fetch_ohlcv(symbol=symbol, limit=1)
         return OHLCPoint(raw_data[0])
+
+    def fetch_order_book(self, exchange: Exchange, opportunity: Opportunity) -> OrderBook:
+        client = exchange.new_client()
+        symbol = opportunity.symbol_pair.get_pair_name(exchange.name)
+        raw_data = client.fetch_order_book(symbol=symbol, limit=50)
+        return OrderBook(raw_data)
