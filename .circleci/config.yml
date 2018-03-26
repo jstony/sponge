@@ -33,12 +33,12 @@ jobs:
             python3 -m venv venv
             . venv/bin/activate
             pip install pipenv
-            pipenv install
+            pipenv install -d
 
       - save_cache:
           paths:
             - ./venv
-          key: v1-dependencies-{{ checksum "requirements.txt" }}
+          key: v1-dependencies-{{ checksum "Pipfile.lock" }}
 
       # run tests!
       # this example uses Django's built-in test-runner
