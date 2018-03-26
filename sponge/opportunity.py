@@ -48,6 +48,8 @@ class Opportunity(object):
         target_volume = self.least_amount * 2
         bid = high_orderbook.best_bid_by_volume(target_volume)
         ask = low_orderbook.best_ask_by_volume(target_volume)
+        if bid == 0 or ask == 0:
+            return
         price_spread = bid - ask
         spread_rate = price_spread / min(bid, ask)
         profit_rate = spread_rate - self.estimated_fee
